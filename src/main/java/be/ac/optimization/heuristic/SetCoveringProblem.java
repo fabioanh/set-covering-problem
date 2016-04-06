@@ -2,6 +2,7 @@ package be.ac.optimization.heuristic;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -12,16 +13,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IntSummaryStatistics;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.apache.commons.collections.ListUtils;
 import org.apache.log4j.Logger;
-
-import be.ac.optimization.heuristic.SetCoveringProblem.Subset;
 
 /**
  * Class to represent the set covering problem
@@ -29,59 +27,93 @@ import be.ac.optimization.heuristic.SetCoveringProblem.Subset;
  * @author Fabio Navarrete
  *
  */
-public final class SetCoveringProblem {
+public final class SetCoveringProblem implements Serializable {
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -6650501831301162392L;
 
 	private final static Logger LOGGER = Logger.getLogger(SetCoveringProblem.class);
 
 	/**
 	 * Number of sets in the problem. Aka: Number of columns
+	 * 
+	 * @serial
 	 */
 	private Integer nSets = new Integer(0);
 	/**
 	 * Number of elements in the problem
+	 * 
+	 * @serial
 	 */
 	private Integer nElements = new Integer(0);
 	/**
 	 * Path to the instance in the file system
+	 * 
+	 * @serial
 	 */
 	private final String instanceFile;
 
 	/**
 	 * Key with the identifier of the element mapping to a list of the subsets
 	 * that contain the element in the key.
+	 * 
+	 * @serial
 	 */
-	private final HashMap<Integer, ArrayList<Integer>> elementSetMap = new HashMap<>();
+	private final HashMap<Integer, ArrayList<Integer>> elementSetMap;
 	/**
 	 * Key with the identifier of the set mapping to a list of the elements
 	 * contained in the given set and their total cost.
+	 * 
+	 * @serial
 	 */
-	private final HashMap<Integer, Subset> setElementMap = new HashMap<>();
+	private final HashMap<Integer, Subset> setElementMap;
 	/**
 	 * Contains the number of sets that contain the element in the given index
 	 * in the array.
+	 * 
+	 * @serial
 	 */
-	private final ArrayList<Integer> countNSets = new ArrayList<>();
+	private final ArrayList<Integer> countNSets;
 
 	/**
 	 * Matrix to trace the coverage according to the rows read from the instance
 	 * text file
+	 * 
+	 * @serial
 	 */
 	private boolean[][] map;
 
 	/**
 	 * List of covered/uncovered elements for the optimization process. Elements
 	 * are also known as rows
+	 * 
+	 * @serial
 	 */
 	private HashSet<Integer> coveredElements;
 	private HashSet<Integer> uncoveredElements;
 	/**
 	 * List of used/unused sets for the solution. Elements are also known as
 	 * columns in the implementation
+	 * 
+	 * @serial
 	 */
 	private HashSet<Integer> coveredSets;
 	private HashSet<Integer> uncoveredSets;
 
+	/**
+	 * List containing the sets ordered by their cost from minimum to maximum
+	 * 
+	 * @serial
+	 */
+	// TODO: Check if this field is useful. May not be used.
+	private List<Integer> costOrderedSets;
+
 	public SetCoveringProblem(String instanceFile) {
+		this.setElementMap = new HashMap<>();
+		this.elementSetMap = new HashMap<>();
+		this.countNSets = new ArrayList<>();
 		this.instanceFile = instanceFile;
 		readInstance();
 	}
@@ -103,25 +135,43 @@ public final class SetCoveringProblem {
 			readRows(reader, line);
 			countAndLoadElementsPerSet();
 			initCoveredLists();
+			initCostOrderedSets();
 			LOGGER.info("Load of instance done successfully");
 		} catch (IOException e) {
 			LOGGER.error(e);
 		}
 	}
 
-	private void initCoveredLists() {
-		coveredElements = new HashSet<>();
-		coveredSets = new HashSet<>();
-		uncoveredElements = new HashSet<>();
-		uncoveredSets = new HashSet<>();
+	/**
+	 * Fills the list costOrderedSets with the values for the sets ordered from
+	 * minimum to maximum according to the cost of each of them.
+	 */
+	private void initCostOrderedSets() {
+		costOrderedSets = setElementMap.entrySet().stream().sorted(
+				(s1, s2) -> Integer.compare(s1.getValue().getCost(), s2.getValue().getCost()))
+				.map(s -> s.getKey()).collect(Collectors.toList());
+	}
 
+	private void initCoveredLists() {
+		initCoveredElements();
+		initCoveredSets();
+	}
+
+	private void initCoveredElements() {
+		coveredElements = new HashSet<>();
+		uncoveredElements = new HashSet<>();
 		for (int i = 0; i < nElements; i++) {
 			uncoveredElements.add(i);
 		}
+	}
 
+	private void initCoveredSets() {
+		coveredSets = new HashSet<>();
+		uncoveredSets = new HashSet<>();
 		for (int i = 0; i < nSets; i++) {
 			uncoveredSets.add(i);
 		}
+
 	}
 
 	/**
@@ -271,11 +321,29 @@ public final class SetCoveringProblem {
 		this.uncoveredSets = uncoveredSets;
 	}
 
+	public List<Integer> getCostOrderedSets() {
+		return costOrderedSets;
+	}
+
+	public void setCostOrderedSets(List<Integer> costOrderedSets) {
+		this.costOrderedSets = costOrderedSets;
+	}
+
+	/**
+	 * Logic to set an element as covered
+	 * 
+	 * @param element
+	 */
 	public void coverElement(Integer element) {
 		uncoveredElements.remove(element);
 		coveredElements.add(element);
 	}
 
+	/**
+	 * Logic to establish a set as covered.
+	 * 
+	 * @param set
+	 */
 	public void coverSet(Integer set) {
 		if (uncoveredSets.remove(set)) {
 			coveredSets.add(set);
@@ -283,6 +351,30 @@ public final class SetCoveringProblem {
 				coverElement(elem);
 			}
 		}
+	}
+
+	public void restoreCoveredSets(HashSet<Integer> coveredSetss) {
+		initCoveredSets();
+		coveredSets = new HashSet<>(coveredSetss);
+		uncoveredSets.removeAll(coveredSets);
+		updateCoveredElements();
+	}
+
+	public Boolean uncoverSet(Integer set) {
+		if (coveredSets.remove(set)) {
+			uncoveredSets.add(set);
+			updateCoveredElements();
+			return true;
+		}
+		return false;
+	}
+
+	private void updateCoveredElements() {
+		initCoveredElements();
+		for (Integer s : coveredSets) {
+			coveredElements.addAll(setElementMap.get(s).getElems());
+		}
+		uncoveredElements.removeAll(coveredElements);
 	}
 
 	/**
@@ -293,6 +385,19 @@ public final class SetCoveringProblem {
 	public Integer getCoveredSetsCost() {
 		Integer totalCost = 0;
 		for (Integer cs : coveredSets) {
+			totalCost += setElementMap.get(cs).getCost();
+		}
+		return totalCost;
+	}
+
+	/**
+	 * Returns the cost of the current covered sets
+	 * 
+	 * @return
+	 */
+	public Integer getSetsCost(List<Integer> covereddSets) {
+		Integer totalCost = 0;
+		for (Integer cs : covereddSets) {
 			totalCost += setElementMap.get(cs).getCost();
 		}
 		return totalCost;
@@ -435,6 +540,7 @@ public final class SetCoveringProblem {
 	 * Starting from the highest cost set tries to eliminate sets checking that
 	 * the current coverage of elements is not changed
 	 */
+	@SuppressWarnings("unchecked")
 	public void redundancyElimination() {
 		ArrayList<Entry<Integer, Subset>> orderedSets = (ArrayList<Entry<Integer, Subset>>) setElementMap
 				.entrySet().stream()
@@ -465,6 +571,14 @@ public final class SetCoveringProblem {
 		return coveredElems;
 	}
 
+	public List<Integer> getOrderedUncoveredSets() {
+		return this.getSetElementMap().entrySet().stream()
+				.filter(s -> this.getUncoveredSets().contains(s.getKey()))
+				.sorted((s1, s2) -> Integer.compare(s1.getValue().getCost(),
+						s2.getValue().getCost()))
+				.map(Map.Entry::getKey).collect(Collectors.toList());
+	}
+
 	public String printableCoveredSets() {
 		StringBuilder sb = new StringBuilder();
 		for (Integer cs : coveredSets) {
@@ -480,11 +594,24 @@ public final class SetCoveringProblem {
 	 * @author Fabio Navarrete
 	 *
 	 */
-	public class Subset {
+	public class Subset implements Serializable {
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = -667865852424882705L;
+
+		/**
+		 * @serial
+		 */
 		private ArrayList<Integer> elems = new ArrayList<>();
+		/**
+		 * @serial
+		 */
 		private Integer cost;
 		/**
 		 * Number of elements that the set contains
+		 * 
+		 * @serial
 		 */
 		private Integer numElems;
 

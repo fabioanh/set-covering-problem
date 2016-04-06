@@ -1,9 +1,12 @@
 package be.ac.optimization.heuristic;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.collections.ListUtils;
+import org.apache.commons.lang3.SerializationUtils;
 import org.apache.log4j.Logger;
 
 public final class HeuristicSolver {
@@ -58,7 +61,6 @@ public final class HeuristicSolver {
 			break;
 		default:
 			break;
-
 		}
 
 		/**
@@ -68,8 +70,19 @@ public final class HeuristicSolver {
 			setCoveringProblem.redundancyElimination();
 		}
 
+		if (improvementType != null) {
+			switch (improvementType) {
+			case BI:
+				this.iterativeBestImprovement();
+				break;
+			case FI:
+				this.iterativeFirstImprovement();
+				break;
+			}
+		}
+
 		LOGGER.info("Total cost: " + setCoveringProblem.getCoveredSetsCost());
-		LOGGER.debug("Sets covered: " + setCoveringProblem.printableCoveredSets());
+		LOGGER.info("Sets covered: " + setCoveringProblem.printableCoveredSets());
 	}
 
 	/**
@@ -144,6 +157,80 @@ public final class HeuristicSolver {
 	 */
 	private boolean terminate() {
 		return this.setCoveringProblem.getUncoveredElements().isEmpty();
+	}
+
+	/**
+	 * Implementation for the iterative first improvement method. After removing
+	 * a random set, takes the current uncovered sets and try to put them in the
+	 * solution starting from the less expensive one. If all the uncovered sets
+	 * are tried the process is finished
+	 */
+	private void iterativeFirstImprovement() {
+		SetCoveringProblem coverProblemFI = SerializationUtils.clone(setCoveringProblem);
+		List<Integer> orderedUncoveredSets = setCoveringProblem.getOrderedUncoveredSets();
+		Iterator<Integer> uncovSetIter;
+		Integer currentCost = setCoveringProblem.getCoveredSetsCost();
+		HashSet<Integer> currentCoveredSets;
+
+		Boolean improvement = true;
+		while (improvement) {
+			improvement = false;
+			uncovSetIter = orderedUncoveredSets.iterator();
+			currentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
+			coverProblemFI.uncoverSet(RandomUtils.getInstance(null)
+					.getRandomInt(coverProblemFI.getCoveredSets().size()).intValue());
+			while (uncovSetIter.hasNext()) {
+				coverProblemFI.coverSet(uncovSetIter.next());
+				coverProblemFI.redundancyElimination();
+				if (coverProblemFI.getUncoveredElements().isEmpty()
+						&& currentCost > coverProblemFI.getCoveredSetsCost()) {
+					improvement = true;
+					uncovSetIter.remove();
+					currentCost = coverProblemFI.getCoveredSetsCost();
+					break;
+				}
+				coverProblemFI.restoreCoveredSets(currentCoveredSets);
+			}
+		}
+
+		LOGGER.info("First Improvement Final Cost: " + coverProblemFI.getCoveredSetsCost());
+		LOGGER.info("Sets covered: " + coverProblemFI.printableCoveredSets());
+	}
+
+	private void iterativeBestImprovement() {
+		SetCoveringProblem coverProblemFI = SerializationUtils.clone(setCoveringProblem);
+		Iterator<Integer> uncovSetIter;
+		Integer uncovSet;
+		Integer currentCost = setCoveringProblem.getCoveredSetsCost();
+		HashSet<Integer> currentCoveredSets;
+		HashSet<Integer> initialCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
+
+		Boolean improvement = true;
+		while (improvement) {
+			improvement = false;
+			for (Integer cs : initialCoveredSets) {
+				uncovSetIter = coverProblemFI.getOrderedUncoveredSets().iterator();
+				currentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
+
+				if (coverProblemFI.uncoverSet(cs)) {
+					while (uncovSetIter.hasNext()) {
+						uncovSet = uncovSetIter.next();
+						coverProblemFI.coverSet(uncovSet);
+						coverProblemFI.redundancyElimination();
+						if (coverProblemFI.getUncoveredElements().isEmpty()
+								&& currentCost > coverProblemFI.getCoveredSetsCost()) {
+							improvement = true;
+							uncovSetIter.remove();
+							break;
+						}
+						coverProblemFI.restoreCoveredSets(currentCoveredSets);
+					}
+				}
+			}
+		}
+
+		LOGGER.info("First Improvement Final Cost: " + coverProblemFI.getCoveredSetsCost());
+		LOGGER.info("Sets covered: " + coverProblemFI.printableCoveredSets());
 	}
 
 	/**
