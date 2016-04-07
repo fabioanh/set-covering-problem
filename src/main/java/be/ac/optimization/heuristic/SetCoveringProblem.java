@@ -69,13 +69,6 @@ public final class SetCoveringProblem implements Serializable {
 	 * @serial
 	 */
 	private final HashMap<Integer, Subset> setElementMap;
-	/**
-	 * Contains the number of sets that contain the element in the given index
-	 * in the array.
-	 * 
-	 * @serial
-	 */
-	private final ArrayList<Integer> countNSets;
 
 	/**
 	 * Matrix to trace the coverage according to the rows read from the instance
@@ -102,18 +95,9 @@ public final class SetCoveringProblem implements Serializable {
 	private HashSet<Integer> coveredSets;
 	private HashSet<Integer> uncoveredSets;
 
-	/**
-	 * List containing the sets ordered by their cost from minimum to maximum
-	 * 
-	 * @serial
-	 */
-	// TODO: Check if this field is useful. May not be used.
-	private List<Integer> costOrderedSets;
-
 	public SetCoveringProblem(String instanceFile) {
 		this.setElementMap = new HashMap<>();
 		this.elementSetMap = new HashMap<>();
-		this.countNSets = new ArrayList<>();
 		this.instanceFile = instanceFile;
 		readInstance();
 	}
@@ -135,21 +119,10 @@ public final class SetCoveringProblem implements Serializable {
 			readRows(reader, line);
 			countAndLoadElementsPerSet();
 			initCoveredLists();
-			initCostOrderedSets();
-			LOGGER.info("Load of instance done successfully");
+			LOGGER.debug("Load of instance done successfully");
 		} catch (IOException e) {
 			LOGGER.error(e);
 		}
-	}
-
-	/**
-	 * Fills the list costOrderedSets with the values for the sets ordered from
-	 * minimum to maximum according to the cost of each of them.
-	 */
-	private void initCostOrderedSets() {
-		costOrderedSets = setElementMap.entrySet().stream().sorted(
-				(s1, s2) -> Integer.compare(s1.getValue().getCost(), s2.getValue().getCost()))
-				.map(s -> s.getKey()).collect(Collectors.toList());
 	}
 
 	private void initCoveredLists() {
@@ -222,7 +195,6 @@ public final class SetCoveringProblem implements Serializable {
 				map[elementSetMap.size()][val] = true;
 			}
 			elementSetMap.put(elementSetMap.size(), tmpRowValues);
-			countNSets.add(numElements);
 			if (line != null) {
 				numElements = Integer.valueOf(line.trim()).intValue();
 			}
@@ -285,10 +257,6 @@ public final class SetCoveringProblem implements Serializable {
 		return setElementMap;
 	}
 
-	public ArrayList<Integer> getCountNSets() {
-		return countNSets;
-	}
-
 	public HashSet<Integer> getCoveredElements() {
 		return coveredElements;
 	}
@@ -319,14 +287,6 @@ public final class SetCoveringProblem implements Serializable {
 
 	public void setUncoveredSets(HashSet<Integer> uncoveredSets) {
 		this.uncoveredSets = uncoveredSets;
-	}
-
-	public List<Integer> getCostOrderedSets() {
-		return costOrderedSets;
-	}
-
-	public void setCostOrderedSets(List<Integer> costOrderedSets) {
-		this.costOrderedSets = costOrderedSets;
 	}
 
 	/**
@@ -577,14 +537,6 @@ public final class SetCoveringProblem implements Serializable {
 				.sorted((s1, s2) -> Integer.compare(s1.getValue().getCost(),
 						s2.getValue().getCost()))
 				.map(Map.Entry::getKey).collect(Collectors.toList());
-	}
-
-	public String printableCoveredSets() {
-		StringBuilder sb = new StringBuilder();
-		for (Integer cs : coveredSets) {
-			sb.append(cs).append(' ');
-		}
-		return sb.toString();
 	}
 
 	/**

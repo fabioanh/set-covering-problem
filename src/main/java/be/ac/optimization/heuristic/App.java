@@ -29,8 +29,11 @@ public class App {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		long startTime = System.currentTimeMillis();
 		HeuristicSolver scpSolver = readArguments(args);
 		scpSolver.execute();
+		long stopTime = System.currentTimeMillis();
+		LOGGER.info("Exec Time: " + (stopTime - startTime));
 	}
 
 	/**

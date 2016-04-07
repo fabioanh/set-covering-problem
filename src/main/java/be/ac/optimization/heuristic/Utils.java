@@ -1,19 +1,14 @@
 package be.ac.optimization.heuristic;
 
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.Collection;
 
 public class Utils {
 
-	public static <T> T getRandomElement(HashSet<T> set, Integer position) {
-		int k = 0;
-		T element = null;
-		for (Iterator<T> ue = set.iterator(); ue.hasNext(); k++) {
-			element = ue.next();
-			if (k == position) {
-				break;
-			}
+	public static <T> String printableCollection(Collection<T> collection) {
+		StringBuilder sb = new StringBuilder();
+		for (T cs : collection) {
+			sb.append(cs).append(' ');
 		}
-		return element;
+		return sb.toString();
 	}
 }

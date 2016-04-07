@@ -1,6 +1,7 @@
 package be.ac.optimization.heuristic;
 
 import java.util.Random;
+import java.util.Set;
 
 public class RandomUtils {
 
@@ -40,6 +41,18 @@ public class RandomUtils {
 
 	public Random getRandom() {
 		return random;
+	}
+
+	public <T> T getRandomFromSet(Set<T> set) {
+		int rndPos = random.nextInt(set.size());
+		int i = 0;
+		for (T obj : set) {
+			if (i == rndPos) {
+				return obj;
+			}
+			i++;
+		}
+		return null;
 	}
 
 }

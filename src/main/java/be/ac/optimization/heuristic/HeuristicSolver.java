@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang3.SerializationUtils;
+import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.log4j.Logger;
 
 public final class HeuristicSolver {
@@ -26,7 +27,7 @@ public final class HeuristicSolver {
 	/**
 	 * Instance of the set covering problem
 	 */
-	private final SetCoveringProblem setCoveringProblem;
+	private SetCoveringProblem setCoveringProblem;
 	/**
 	 * Seed used to set up the random generator
 	 */
@@ -59,18 +60,21 @@ public final class HeuristicSolver {
 		case CH4:
 			ch4Solution();
 			break;
-		default:
-			break;
 		}
 
+		Integer costBeforeRE = setCoveringProblem.getCoveredSetsCost();
 		/**
 		 * Execute final redundancy elimination if set in parameters
 		 */
 		if (re) {
 			setCoveringProblem.redundancyElimination();
 		}
+		Integer costAfterRE = setCoveringProblem.getCoveredSetsCost();
+
+		Integer costBeforeImprovement = setCoveringProblem.getCoveredSetsCost();
 
 		if (improvementType != null) {
+			// iterativeImprovement();
 			switch (improvementType) {
 			case BI:
 				this.iterativeBestImprovement();
@@ -81,12 +85,24 @@ public final class HeuristicSolver {
 			}
 		}
 
-		LOGGER.info("Total cost: " + setCoveringProblem.getCoveredSetsCost());
-		LOGGER.info("Sets covered: " + setCoveringProblem.printableCoveredSets());
+		Integer costAfterImprovement = setCoveringProblem.getCoveredSetsCost();
+		LOGGER.info("Total cost: " + costAfterImprovement);
+		if (improvementType != null) {
+			LOGGER.info("Improvement profit: " + (costBeforeImprovement > costAfterImprovement));
+			LOGGER.info(
+					"Improvement profit value: " + (costBeforeImprovement - costAfterImprovement));
+		}
+		if (re && improvementType == null) {
+			LOGGER.info("RedEl profit: " + (costBeforeRE > costAfterRE));
+			LOGGER.info("RedEl profit value: " + (costBeforeRE - costAfterRE));
+		}
+
+		LOGGER.debug(
+				"Sets covered: " + Utils.printableCollection(setCoveringProblem.getCoveredSets()));
 	}
 
 	/**
-	 * Solution for the constructive heurstic 1. Random selection of elements
+	 * Solution for the constructive heuristic 1. Random selection of elements
 	 * and sets
 	 */
 	@SuppressWarnings("unchecked")
@@ -96,9 +112,8 @@ public final class HeuristicSolver {
 		List<Integer> availableSets;
 		while (!terminate()) {
 			// Choose a random element from the uncovered ones
-			randomElement = Utils.getRandomElement(setCoveringProblem.getUncoveredElements(),
-					RandomUtils.getInstance(seed)
-							.getRandomInt(setCoveringProblem.getUncoveredElements().size()));
+			randomElement = RandomUtils.getInstance(null)
+					.getRandomFromSet(setCoveringProblem.getUncoveredElements());
 
 			availableSets = ListUtils.subtract(
 					setCoveringProblem.getElementSetMap().get(randomElement),
@@ -167,70 +182,110 @@ public final class HeuristicSolver {
 	 */
 	private void iterativeFirstImprovement() {
 		SetCoveringProblem coverProblemFI = SerializationUtils.clone(setCoveringProblem);
-		List<Integer> orderedUncoveredSets = setCoveringProblem.getOrderedUncoveredSets();
 		Iterator<Integer> uncovSetIter;
-		Integer currentCost = setCoveringProblem.getCoveredSetsCost();
+		Integer currentCost = coverProblemFI.getCoveredSetsCost();
+		HashSet<Integer> iterCurrentCoveredSets;
 		HashSet<Integer> currentCoveredSets;
 
 		Boolean improvement = true;
 		while (improvement) {
 			improvement = false;
-			uncovSetIter = orderedUncoveredSets.iterator();
+
+			// Set fixed order to check neighborhoods
+			uncovSetIter = coverProblemFI.getOrderedUncoveredSets().iterator();
+
+			// Uncover random set from the currently covered sets (remove random
+			// column)
 			currentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
 			coverProblemFI.uncoverSet(RandomUtils.getInstance(null)
-					.getRandomInt(coverProblemFI.getCoveredSets().size()).intValue());
+					.getRandomFromSet(coverProblemFI.getCoveredSets()));
+			iterCurrentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
+
 			while (uncovSetIter.hasNext()) {
+				// Attempt to cover the gap by trying to use the uncovered sets
+				// starting from the less expensive ones. Definition of possible
+				// neighbours
 				coverProblemFI.coverSet(uncovSetIter.next());
 				coverProblemFI.redundancyElimination();
+
+				// If the new selected set leads to an improvement, set it as
+				// the new best cost, breaks the current attempts to find a
+				// better option and proceed with another random element
+				// elimination.
 				if (coverProblemFI.getUncoveredElements().isEmpty()
 						&& currentCost > coverProblemFI.getCoveredSetsCost()) {
 					improvement = true;
 					uncovSetIter.remove();
 					currentCost = coverProblemFI.getCoveredSetsCost();
+					currentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
 					break;
 				}
+				coverProblemFI.restoreCoveredSets(iterCurrentCoveredSets);
+			}
+
+			if (!coverProblemFI.getUncoveredElements().isEmpty()) {
 				coverProblemFI.restoreCoveredSets(currentCoveredSets);
 			}
 		}
 
-		LOGGER.info("First Improvement Final Cost: " + coverProblemFI.getCoveredSetsCost());
-		LOGGER.info("Sets covered: " + coverProblemFI.printableCoveredSets());
+		LOGGER.debug("First Improvement Final Cost: " + coverProblemFI.getCoveredSetsCost());
+		LOGGER.debug("Sets covered: " + Utils.printableCollection(coverProblemFI.getCoveredSets()));
+		LOGGER.debug("Uncovered elements: "
+				+ Utils.printableCollection(coverProblemFI.getUncoveredElements()));
+
+		this.setCoveringProblem = SerializationUtils.clone(coverProblemFI);
+
 	}
 
 	private void iterativeBestImprovement() {
-		SetCoveringProblem coverProblemFI = SerializationUtils.clone(setCoveringProblem);
+		SetCoveringProblem coverProblemBI = SerializationUtils.clone(setCoveringProblem);
 		Iterator<Integer> uncovSetIter;
-		Integer uncovSet;
-		Integer currentCost = setCoveringProblem.getCoveredSetsCost();
-		HashSet<Integer> currentCoveredSets;
-		HashSet<Integer> initialCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
+		HashSet<Integer> iterCurrentCoveredSets;
+
+		MutablePair<Integer, HashSet<Integer>> bestFound = new MutablePair<Integer, HashSet<Integer>>(
+				coverProblemBI.getCoveredSetsCost(),
+				new HashSet<>(coverProblemBI.getCoveredSets()));
 
 		Boolean improvement = true;
 		while (improvement) {
 			improvement = false;
-			for (Integer cs : initialCoveredSets) {
-				uncovSetIter = coverProblemFI.getOrderedUncoveredSets().iterator();
-				currentCoveredSets = new HashSet<>(coverProblemFI.getCoveredSets());
 
-				if (coverProblemFI.uncoverSet(cs)) {
-					while (uncovSetIter.hasNext()) {
-						uncovSet = uncovSetIter.next();
-						coverProblemFI.coverSet(uncovSet);
-						coverProblemFI.redundancyElimination();
-						if (coverProblemFI.getUncoveredElements().isEmpty()
-								&& currentCost > coverProblemFI.getCoveredSetsCost()) {
-							improvement = true;
-							uncovSetIter.remove();
-							break;
-						}
-						coverProblemFI.restoreCoveredSets(currentCoveredSets);
-					}
+			// Set fixed order to check neighborhoods and make sure all of them
+			// are covered
+			uncovSetIter = coverProblemBI.getOrderedUncoveredSets().iterator();
+
+			// Uncover random set from the currently covered sets (remove random
+			// column)
+			coverProblemBI.uncoverSet(RandomUtils.getInstance(null)
+					.getRandomFromSet(coverProblemBI.getCoveredSets()));
+			iterCurrentCoveredSets = new HashSet<>(coverProblemBI.getCoveredSets());
+
+			// Go through the neighbours and check if a better solution than the
+			// current one is found
+			while (uncovSetIter.hasNext()) {
+				coverProblemBI.coverSet(uncovSetIter.next());
+				coverProblemBI.redundancyElimination();
+
+				// If a better solution is found, save it as the best found and
+				// keep trying the remaining neighbours
+				if (coverProblemBI.getUncoveredElements().isEmpty()
+						&& bestFound.getLeft() > coverProblemBI.getCoveredSetsCost()) {
+					improvement = true;
+					uncovSetIter.remove();
+					bestFound.setLeft(coverProblemBI.getCoveredSetsCost());
+					bestFound.setRight(new HashSet<>(coverProblemBI.getCoveredSets()));
 				}
+				coverProblemBI.restoreCoveredSets(iterCurrentCoveredSets);
 			}
+			coverProblemBI.restoreCoveredSets(bestFound.getRight());
 		}
 
-		LOGGER.info("First Improvement Final Cost: " + coverProblemFI.getCoveredSetsCost());
-		LOGGER.info("Sets covered: " + coverProblemFI.printableCoveredSets());
+		LOGGER.debug("Best Improvement Final Cost: " + coverProblemBI.getCoveredSetsCost());
+		LOGGER.debug("Sets covered: " + Utils.printableCollection(coverProblemBI.getCoveredSets()));
+		LOGGER.debug("Uncovered elements: "
+				+ Utils.printableCollection(coverProblemBI.getUncoveredElements()));
+
+		this.setCoveringProblem = SerializationUtils.clone(coverProblemBI);
 	}
 
 	/**
