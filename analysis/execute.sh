@@ -9,20 +9,30 @@ output_directory="output"
 output_filename=${output_directory}"/out_"
 instances_file="instances.txt"
 
-#initial set up
-rm ${output_filename}*
-rm -r ${output_directory}
-mkdir ${output_directory}
-
 #inputs
 redundancy_elim=$1
 chs_in=$2
 seed_num=$3
+improvement=$4
 
 
-if ${redundancy_elim}; then
+if ${redundancy_elim} && [ -z "$improvement" ]; then
 	output_filename=${output_filename}re_
 fi
+
+if ${redundancy_elim} && ! [ -z "$improvement" ]; then
+	output_filename=${output_filename}re_${improvement}_
+fi
+
+if ! ${redundancy_elim} && ! [ -z "$improvement" ]; then
+	output_filename=${output_filename}${improvement}_
+fi
+
+
+#initial set up
+rm ${output_filename}*
+#rm -r ${output_directory}
+#mkdir ${output_directory}
 
 #Chosen constructive heuristics
 IFS=',' read -ra chs <<< "$chs_in"
@@ -37,6 +47,7 @@ done < ${instances_file}
 #Standard deviation calculation
 for ch in "${chs[@]}"; do
 	ch_profit_re=""
+	ch_profit_improv=""
 	ch_time=""
 	ch_cost=""
 	for inst in "${instances[@]}"; do
@@ -44,14 +55,20 @@ for ch in "${chs[@]}"; do
 		echo ${ch}-${instance[0]}
 		for (( seed=1; seed<=$seed_num; seed++ )); do
 			if ${redundancy_elim}; then
-				output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} -re)"
-				ch_profit_re+=$(printf "%s\n" $(echo ${output} | grep -o -E 'RedEl profit value: [0-9]+' | cut -d ' ' -f4))$' '
-				#echo "${output}" | tee -a ${output_filename}${ch} >> ${output_filename}${ch}_${instance[0]}
-				#java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} -re | tee -a ${output_filename}${ch} >> ${output_filename}${ch}_${instance[0]}
+				if [ -z "$improvement" ] ; then
+					output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} -re)"
+					ch_profit_re+=$(printf "%s\n" $(echo ${output} | grep -o -E 'RedEl profit value: [0-9]+' | cut -d ' ' -f4))$' '
+				else
+					output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} -re -improvement ${improvement})"
+					ch_profit_improv+=$(printf "%s\n" $(echo ${output} | grep -o -E 'Improvement profit value: [0-9]+' | cut -d ' ' -f4))$' '
+				fi
 			else
-				output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch})"
-				#echo "${output}" | tee -a ${output_filename}${ch} >> ${output_filename}${ch}_${instance[0]}
-				#java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} | tee -a ${output_filename}${ch} >> ${output_filename}${ch}_${instance[0]}
+				if [ -z "$improvement" ] ; then
+					output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch})"
+				else
+					output="$(java -jar ${jar_location} -instance ${instances_dir}${instance[0]} -seed ${seed} -ch ${ch} -improvement ${improvement})"
+					ch_profit_improv+=$(printf "%s\n" $(echo ${output} | grep -o -E 'Improvement profit value: [0-9]+' | cut -d ' ' -f4))$' '
+				fi
 			fi
 			ch_time+=$(printf "%s\n" $(echo ${output} | grep -o -E 'Exec Time: [0-9]+' | cut -d ' ' -f3))$' '
 			ch_cost+=$(printf "%s\n" $(echo ${output} | grep -o -E 'Total cost: [0-9]+' | cut -d ' ' -f3))$' '
@@ -59,26 +76,17 @@ for ch in "${chs[@]}"; do
 			best=${instance[1]}
 			echo $(awk -v cost=$cost -v best=$best 'BEGIN { print (cost - best) / best }') >> ${output_filename}${ch}_percent_deviation
 		done
-		#echo "Best: "${instance[1]} >> ${output_filename}${ch}_${instance[0]}
-		#echo $(cat ${output_filename}${ch}_${instance[0]} | grep -o -E 'Total cost: [0-9]+' | cut -d ' ' -f3) >> ${output_filename}${ch}_${instance[0]}
 	done
-	if ${redundancy_elim}; then
+	if ${redundancy_elim} && [ -z "$improvement" ]; then
 		echo ${ch_profit_re} | tr " " "\n" >> ${output_filename}${ch}_re_profit
 	fi
+
+	if ! [ -z "$improvement" ]; then
+		echo ${ch_profit_improv} | tr " " "\n" >> ${output_filename}${ch}_improv_profit
+	fi
+
 	echo ${ch_time} | tr " " "\n" >> ${output_filename}${ch}_times
 	echo ${ch_time} | tr " " "\n" >> ${output_filename}total_times
 	echo ${ch_cost} | tr " " "\n" >> ${output_filename}${ch}_costs
 	echo ${ch_cost} | tr " " "\n" >> ${output_filename}total_costs
 done
-
-#for ch in "${chs[@]}"; do
-	#Extract costs
-#	printf "%s\n" $(cat ${output_filename}${ch} | grep -o -E 'Total cost: [0-9]+' | cut -d ' ' -f3) > ${output_filename}${ch}_costs
-	#Extract times
-#	printf "%s\n" $(cat ${output_filename}${ch} | grep -o -E 'Exec Time: [0-9]+' | cut -d ' ' -f3) > ${output_filename}${ch}_times
-#	if ${redundancy_elim}; then
-		#Extract Redundancy Elimination Profit
-#		printf "%s\n" $(cat ${output_filename}${ch} | grep -o -E 'RedEl profit value: [0-9]+' | cut -d ' ' -f4) > ${output_filename}${ch}_re_profit
-#	fi
-#done
-
