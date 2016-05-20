@@ -1,3 +1,4 @@
-scp42.txt;512
-scp43.txt;516
-scp44.txt;494
+scpa1.txt;253;907400
+scpb1.txt;69;531000
+scpc1.txt;227;1581400
+scpd1.txt;60;1055900

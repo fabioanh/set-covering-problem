@@ -1,17 +1,19 @@
 package be.ac.optimization.heuristic;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 
-import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.log4j.Logger;
 
+import be.ac.optimization.heuristic.ACOHelper.ACOHelperBuilder;
+
 public final class HeuristicSolver {
 	private final static Logger LOGGER = Logger.getLogger(HeuristicSolver.class);
+	private static final Integer NOT_IMPROVEMENT_THRESHOLD = 50;
+	private static final Double LOWER_THRESHOLD_METROPOLIS_ACCEPTANCE = 0.03;
+	// private static final Double HIGHER_THRESHOLD_METROPOLIS_ACCEPTANCE = 0.5;
 	/**
 	 * random solution construction
 	 */
@@ -29,17 +31,55 @@ public final class HeuristicSolver {
 	 */
 	private SetCoveringProblem setCoveringProblem;
 	/**
-	 * Seed used to set up the random generator
+	 * Stochastic Local Search Algorithm
 	 */
-	private final Integer seed;
+	private final StochasticLocalSearch stochasticLocalSearch;
+	/**
+	 * Temperature value for the Simulated Annealing local search
+	 */
+	private Double temperature;
+	/**
+	 * Cooling parameter for the Simulated Annealing local search
+	 */
+	private final Double cooling;
+	/**
+	 * Beta parameter for the Ant Colony Algorithm
+	 */
+	private final Double beta;
+	/**
+	 * Epsilon parameter for the Ant Colony Algorithm
+	 */
+	private final Double epsilon;
+	/**
+	 * Rho parameter for the Ant Colony Algorithm
+	 */
+	private final Double rho;
+	/**
+	 * Number of ants for the Ant Colony Algorithm
+	 */
+	private final Integer numberOfAnts;
+
+	private Long duration;
+	private final Integer maxLoops;
 
 	private HeuristicSolver(ConstructiveHeuristic constructiveHeuristic, Boolean re,
-			ImprovementType improvementType, String instanceFile, Integer seed) {
+			ImprovementType improvementType, String instanceFile, Integer seed,
+			StochasticLocalSearch stochasticLocalSearch, Double temperature, Double cooling,
+			Double beta, Double epsilon, Double rho, Integer numberOfAnts, Long duration,
+			Integer maxLoops) {
 		this.constructiveHeuristic = constructiveHeuristic;
 		this.re = re;
 		this.improvementType = improvementType;
 		this.setCoveringProblem = new SetCoveringProblem(instanceFile);
-		this.seed = seed;
+		this.stochasticLocalSearch = stochasticLocalSearch;
+		this.temperature = temperature;
+		this.cooling = cooling;
+		this.beta = beta;
+		this.epsilon = epsilon;
+		this.rho = rho;
+		this.numberOfAnts = numberOfAnts;
+		this.duration = duration;
+		this.maxLoops = maxLoops;
 		RandomUtils.getInstance(seed);
 	}
 
@@ -47,52 +87,78 @@ public final class HeuristicSolver {
 	 * Method that runs the algorithm to solve the set covering problem
 	 */
 	public void execute() {
-		switch (constructiveHeuristic) {
-		case CH1:
-			ch1Solution();
-			break;
-		case CH2:
-			ch2Solution();
-			break;
-		case CH3:
-			ch3Solution();
-			break;
-		case CH4:
-			ch4Solution();
-			break;
-		}
 
-		Integer costBeforeRE = setCoveringProblem.getCoveredSetsCost();
-		/**
-		 * Execute final redundancy elimination if set in parameters
-		 */
-		if (re) {
-			setCoveringProblem.redundancyElimination();
-		}
-		Integer costAfterRE = setCoveringProblem.getCoveredSetsCost();
+		Integer costBeforeRE = null;
+		Integer costAfterRE = null;
+		Integer costBeforeImprovement = null;
 
-		Integer costBeforeImprovement = setCoveringProblem.getCoveredSetsCost();
-
-		if (improvementType != null) {
-			// iterativeImprovement();
-			switch (improvementType) {
-			case BI:
-				this.iterativeBestImprovement();
+		if (stochasticLocalSearch == null || (stochasticLocalSearch != null
+				&& !stochasticLocalSearch.equals(StochasticLocalSearch.ACO))) {
+			switch (constructiveHeuristic) {
+			case CH1:
+				setCoveringProblem.ch1Solution();
 				break;
-			case FI:
-				this.iterativeFirstImprovement();
+			case CH2:
+				setCoveringProblem.ch2Solution();
+				break;
+			case CH3:
+				setCoveringProblem.ch3Solution();
+				break;
+			case CH4:
+				setCoveringProblem.ch4Solution();
+				break;
+			}
+
+			costBeforeRE = setCoveringProblem.getCoveredSetsCost();
+			/**
+			 * Execute final redundancy elimination if set in parameters
+			 */
+			if (re) {
+				setCoveringProblem.redundancyElimination();
+			}
+			costAfterRE = setCoveringProblem.getCoveredSetsCost();
+
+			costBeforeImprovement = setCoveringProblem.getCoveredSetsCost();
+
+			if (improvementType != null) {
+				// iterativeImprovement();
+				switch (improvementType) {
+				case BI:
+					this.iterativeBestImprovement();
+					break;
+				case FI:
+					this.iterativeFirstImprovement();
+					break;
+				}
+			}
+		}
+
+		if (stochasticLocalSearch != null) {
+			switch (stochasticLocalSearch) {
+			case ACO:
+				ACOHelperBuilder helperBuilder = new ACOHelperBuilder();
+				helperBuilder.beta(beta).epsilon(epsilon).rho(rho).numberOfAnts(numberOfAnts)
+						.setCoveringProblem(setCoveringProblem).maxLoops(maxLoops);
+				if (duration == null) {
+					duration = computeDuration();
+				}
+				helperBuilder.duration(duration);
+				this.setCoveringProblem = helperBuilder.build().execute();
+				break;
+			case SA:
+				this.simulatedAnnealing();
 				break;
 			}
 		}
 
 		Integer costAfterImprovement = setCoveringProblem.getCoveredSetsCost();
 		LOGGER.info("Total cost: " + costAfterImprovement);
-		if (improvementType != null) {
+		if (improvementType != null && stochasticLocalSearch == null) {
 			LOGGER.info("Improvement profit: " + (costBeforeImprovement > costAfterImprovement));
 			LOGGER.info(
 					"Improvement profit value: " + (costBeforeImprovement - costAfterImprovement));
 		}
-		if (re && improvementType == null) {
+		if (re && improvementType == null && stochasticLocalSearch == null) {
 			LOGGER.info("RedEl profit: " + (costBeforeRE > costAfterRE));
 			LOGGER.info("RedEl profit value: " + (costBeforeRE - costAfterRE));
 		}
@@ -102,76 +168,16 @@ public final class HeuristicSolver {
 	}
 
 	/**
-	 * Solution for the constructive heuristic 1. Random selection of elements
-	 * and sets
-	 */
-	@SuppressWarnings("unchecked")
-	private void ch1Solution() {
-		Integer randomElement;
-		Integer selectedSet;
-		List<Integer> availableSets;
-		while (!terminate()) {
-			// Choose a random element from the uncovered ones
-			randomElement = RandomUtils.getInstance(null)
-					.getRandomFromSet(setCoveringProblem.getUncoveredElements());
-
-			availableSets = ListUtils.subtract(
-					setCoveringProblem.getElementSetMap().get(randomElement),
-					new ArrayList<>(setCoveringProblem.getCoveredSets()));
-			if (!availableSets.isEmpty()) {
-				// Choose a random set from the uncovered sets
-				selectedSet = availableSets
-						.get(RandomUtils.getInstance(seed).getRandomInt(availableSets.size()));
-				setCoveringProblem.coverSet(selectedSet);
-			}
-		}
-	}
-
-	/**
-	 * Greedy heuristic implementation using the weight of a subset as greedy
-	 * value
-	 */
-	private void ch2Solution() {
-		Integer minCost;
-		while (!terminate()) {
-			minCost = setCoveringProblem.getMinUncoveredSetCost();
-			setCoveringProblem.coverSet(setCoveringProblem.getBestUncoveredSetForCost(minCost));
-		}
-	}
-
-	/**
-	 * Greedy heuristic implementation using the weight of a subset divided by
-	 * its number of elements as greedy value
-	 */
-	private void ch3Solution() {
-		Double minCost;
-		while (!terminate()) {
-			minCost = setCoveringProblem.getMinUncoveredSetCostElemsRatio();
-			setCoveringProblem
-					.coverSet(setCoveringProblem.getBestUncoveredSetForCostElemsRatio(minCost));
-		}
-	}
-
-	/**
-	 * Greedy heuristic implementation using the weight of a subset divided by
-	 * the new elements that would be added to the solution as greedy value
-	 */
-	private void ch4Solution() {
-		Double minCost;
-		while (!terminate()) {
-			minCost = setCoveringProblem.getMinUncoveredSetCostAdditionalElemsRatio();
-			setCoveringProblem.coverSet(
-					setCoveringProblem.getBestUncoveredSetForCostAdditionalElemsRatio(minCost));
-		}
-	}
-
-	/**
-	 * Sets the termination condition for the algorithm
+	 * compute the desired duration for the Ant Colony solution. Time taken
+	 * running a solution and a first improvement algorithm multiplied by 100
 	 * 
 	 * @return
 	 */
-	private boolean terminate() {
-		return this.setCoveringProblem.getUncoveredElements().isEmpty();
+	private Long computeDuration() {
+		long initialTime = System.currentTimeMillis();
+		setCoveringProblem.ch4Solution();
+		iterativeFirstImprovement();
+		return (System.currentTimeMillis() - initialTime) * 100;
 	}
 
 	/**
@@ -237,6 +243,9 @@ public final class HeuristicSolver {
 
 	}
 
+	/**
+	 * Method to perform the iterative best improvement method.
+	 */
 	private void iterativeBestImprovement() {
 		SetCoveringProblem coverProblemBI = SerializationUtils.clone(setCoveringProblem);
 		Iterator<Integer> uncovSetIter;
@@ -289,6 +298,111 @@ public final class HeuristicSolver {
 	}
 
 	/**
+	 * Implementation of the Simulated Annealing Stochastic Local Search.
+	 * Uncovering a random set the algorithm uses the metropolis condition and
+	 * the given temperature parameter to define whether a proposed solution
+	 * (taken from the current solution neighbourhood) is accepted or not.
+	 */
+	private void simulatedAnnealing() {
+		SetCoveringProblem coverProblemSA = SerializationUtils.clone(setCoveringProblem);
+		SetCoveringProblem neighbourProblem = SerializationUtils.clone(setCoveringProblem);
+		Integer notImprovementCounter = 0;
+		Double currentMetropolisAcceptance = 1.0;
+		Double initTemp = temperature;
+		Integer loopCounter = 0;
+		Integer previousCost;
+		Integer currentCost;
+
+		while (!terminateSimulatedAnnealing(notImprovementCounter, currentMetropolisAcceptance,
+				temperature, initTemp)) {
+			previousCost = coverProblemSA.getCoveredSetsCost();
+			neighbourProblem = generateNeighbourSA(coverProblemSA, neighbourProblem);
+			currentMetropolisAcceptance = SimulatedAnnealingHelper.pAccept(temperature,
+					coverProblemSA, neighbourProblem);
+			LOGGER.trace("f(s)=" + coverProblemSA.getCoveredSetsCost());
+			LOGGER.trace("f'(s)=" + neighbourProblem.getCoveredSetsCost());
+			coverProblemSA = SimulatedAnnealingHelper.acceptedSCP(temperature,
+					currentMetropolisAcceptance, coverProblemSA, neighbourProblem);
+			currentCost = coverProblemSA.getCoveredSetsCost();
+			neighbourProblem = SerializationUtils.clone(coverProblemSA);
+			notImprovementCounter = currentCost.equals(previousCost) ? notImprovementCounter + 1
+					: 0;
+			temperature = cool(temperature, initTemp, loopCounter);
+			loopCounter++;
+			LOGGER.trace("Temperature: " + temperature);
+			LOGGER.trace("Metropolis Acceptance: " + currentMetropolisAcceptance);
+		}
+		this.setCoveringProblem = coverProblemSA;
+	}
+
+	/**
+	 * Creates a neighbour for the simulated annealing algorithm removing a
+	 * random covered set and filling its gap by randomly choosing one of the
+	 * constructive heuristics defined for the set covering problem
+	 * 
+	 * @param coverProblemSA
+	 * @param neighbourProblem
+	 * @return
+	 */
+	private SetCoveringProblem generateNeighbourSA(SetCoveringProblem coverProblemSA,
+			SetCoveringProblem neighbourProblem) {
+		neighbourProblem.uncoverSet(
+				RandomUtils.getInstance(null).getRandomFromSet(coverProblemSA.getCoveredSets()));
+		switch (RandomUtils.getInstance(null).getRandomInt(3)) {
+		case 0:
+			neighbourProblem.ch1Solution();
+			break;
+		case 1:
+			neighbourProblem.ch2Solution();
+			break;
+		case 2:
+			neighbourProblem.ch3Solution();
+			break;
+		case 3:
+			neighbourProblem.ch4Solution();
+			break;
+		}
+		neighbourProblem.redundancyElimination();
+		return neighbourProblem;
+	}
+
+	/**
+	 * Cooling function used in the Simulated Annealing solution
+	 * 
+	 * @param temperature
+	 * @param initTemp
+	 * @param loopCounter
+	 * @return
+	 */
+	private Double cool(Double temperature, Double initTemp, Integer loopCounter) {
+		return initTemp - cooling * loopCounter;
+		// return temperature * cooling;
+	}
+
+	/**
+	 * Based on the current temperature and the amount of improvement failures
+	 * for the last runs decides whether terminate the simulated annealing
+	 * process or keep trying.
+	 * 
+	 * @param notImprovementCounter
+	 * @return
+	 */
+	private boolean terminateSimulatedAnnealing(Integer notImprovementCounter,
+			Double currentMetropolisAcceptance, Double temperature, Double initialTemperature) {
+		if (temperature <= 0) {
+			return true;
+		}
+
+		if (notImprovementCounter > NOT_IMPROVEMENT_THRESHOLD
+				&& temperature <= initialTemperature * 0.003) {
+			return true;
+		}
+
+		return currentMetropolisAcceptance < LOWER_THRESHOLD_METROPOLIS_ACCEPTANCE
+				&& temperature <= initialTemperature * 0.003;
+	}
+
+	/**
 	 * Builder class used to create the instance of the Heuristic Solver
 	 * 
 	 * @author fakefla
@@ -300,6 +414,15 @@ public final class HeuristicSolver {
 		private ImprovementType improvementType;
 		private String instanceFile;
 		private Integer seed;
+		private StochasticLocalSearch stochasticLocalSearch;
+		private Double temperature;
+		private Double cooling;
+		private Double beta;
+		private Double epsilon;
+		private Double rho;
+		private Integer numberOfAnts;
+		private Integer maxLoops;
+		private Long duration;
 
 		public HeuristicSolverBuilder constructiveHeuristic(
 				ConstructiveHeuristic constructiveHeuristic) {
@@ -327,9 +450,56 @@ public final class HeuristicSolver {
 			return this;
 		}
 
+		public HeuristicSolverBuilder stochasticLocalSearch(
+				StochasticLocalSearch stochasticLocalSearch) {
+			this.stochasticLocalSearch = stochasticLocalSearch;
+			return this;
+		}
+
+		public HeuristicSolverBuilder temperature(Double temperature) {
+			this.temperature = temperature;
+			return this;
+		}
+
+		public HeuristicSolverBuilder cooling(Double cooling) {
+			this.cooling = cooling;
+			return this;
+		}
+
+		public HeuristicSolverBuilder beta(Double beta) {
+			this.beta = beta;
+			return this;
+		}
+
+		public HeuristicSolverBuilder epsilon(Double epsilon) {
+			this.epsilon = epsilon;
+			return this;
+		}
+
+		public HeuristicSolverBuilder rho(Double rho) {
+			this.rho = rho;
+			return this;
+		}
+
+		public HeuristicSolverBuilder numberOfAnts(Integer nAnts) {
+			this.numberOfAnts = nAnts;
+			return this;
+		}
+
+		public HeuristicSolverBuilder duration(Long duration) {
+			this.duration = duration;
+			return this;
+		}
+
+		public HeuristicSolverBuilder maxLoops(Integer maxLoops) {
+			this.maxLoops = maxLoops;
+			return this;
+		}
+
 		public HeuristicSolver build() {
 			return new HeuristicSolver(constructiveHeuristic, re, improvementType, instanceFile,
-					seed);
+					seed, stochasticLocalSearch, temperature, cooling, beta, epsilon, rho,
+					numberOfAnts, duration, maxLoops);
 		}
 	}
 

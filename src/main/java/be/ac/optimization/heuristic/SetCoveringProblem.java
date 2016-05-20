@@ -125,11 +125,19 @@ public final class SetCoveringProblem implements Serializable {
 		}
 	}
 
+	/**
+	 * Sets the initial status for the sets containing the covered elements and
+	 * sets.
+	 */
 	private void initCoveredLists() {
 		initCoveredElements();
 		initCoveredSets();
 	}
 
+	/**
+	 * Initial Status disposition for the sets that control which are the
+	 * currently covered and uncovered elements
+	 */
 	private void initCoveredElements() {
 		coveredElements = new HashSet<>();
 		uncoveredElements = new HashSet<>();
@@ -138,6 +146,10 @@ public final class SetCoveringProblem implements Serializable {
 		}
 	}
 
+	/**
+	 * Initial Status disposition for the sets that control which are the
+	 * currently covered and uncovered sets
+	 */
 	private void initCoveredSets() {
 		coveredSets = new HashSet<>();
 		uncoveredSets = new HashSet<>();
@@ -313,6 +325,13 @@ public final class SetCoveringProblem implements Serializable {
 		}
 	}
 
+	/**
+	 * Sets the covered sets to be the ones provided as parameter. Updates the
+	 * uncovered sets and the covered and uncovered elements corresponding to
+	 * the provided covered sets argument
+	 * 
+	 * @param coveredSetss
+	 */
 	public void restoreCoveredSets(HashSet<Integer> coveredSetss) {
 		initCoveredSets();
 		coveredSets = new HashSet<>(coveredSetss);
@@ -320,6 +339,27 @@ public final class SetCoveringProblem implements Serializable {
 		updateCoveredElements();
 	}
 
+	/**
+	 * Based on the current covered sets of the problem, aligns the status of
+	 * uncovered sets and covered/uncovered elements to the current state of the
+	 * forementioned covered sets
+	 */
+	public void restoreCoveredSets() {
+		HashSet<Integer> coveredSetss = coveredSets;
+		initCoveredSets();
+		coveredSets = new HashSet<>(coveredSetss);
+		uncoveredSets.removeAll(coveredSets);
+		updateCoveredElements();
+	}
+
+	/**
+	 * Method to uncover a given set from the current instance of the set
+	 * covering problem. Returns true if the parameter set was successfully
+	 * uncovered, returns false otherwise.
+	 * 
+	 * @param set
+	 * @return
+	 */
 	public Boolean uncoverSet(Integer set) {
 		if (coveredSets.remove(set)) {
 			uncoveredSets.add(set);
@@ -327,6 +367,30 @@ public final class SetCoveringProblem implements Serializable {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Method intended to be used when there is need to uncover a set but not
+	 * make it available into the uncovered sets. This behaviour is initially
+	 * required as some sort of temporary tabu to increase the variation of the
+	 * neighborhoods in some specific scenarios (Used in simulated annealing)
+	 * 
+	 * @param set
+	 * @return
+	 */
+	public Boolean uncoverSetIncomplete(Integer set) {
+		if (coveredSets.remove(set)) {
+			updateCoveredElements();
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Method to uncover all sets of the current set covering problem.
+	 */
+	public void uncoverAllSets() {
+		initCoveredLists();
 	}
 
 	private void updateCoveredElements() {
@@ -537,6 +601,76 @@ public final class SetCoveringProblem implements Serializable {
 				.sorted((s1, s2) -> Integer.compare(s1.getValue().getCost(),
 						s2.getValue().getCost()))
 				.map(Map.Entry::getKey).collect(Collectors.toList());
+	}
+
+	/**
+	 * Solution for the constructive heuristic 1. Random selection of elements
+	 * and sets
+	 */
+	@SuppressWarnings("unchecked")
+	public void ch1Solution() {
+		Integer randomElement;
+		Integer selectedSet;
+		List<Integer> availableSets;
+		while (!constructiveHeuristicTerminate()) {
+			// Choose a random element from the uncovered ones
+			randomElement = RandomUtils.getInstance(null)
+					.getRandomFromSet(this.getUncoveredElements());
+
+			availableSets = ListUtils.subtract(this.getElementSetMap().get(randomElement),
+					new ArrayList<>(this.getCoveredSets()));
+			if (!availableSets.isEmpty()) {
+				// Choose a random set from the uncovered sets
+				selectedSet = availableSets
+						.get(RandomUtils.getInstance(null).getRandomInt(availableSets.size()));
+				this.coverSet(selectedSet);
+			}
+		}
+	}
+
+	/**
+	 * Greedy heuristic implementation using the weight of a subset as greedy
+	 * value
+	 */
+	public void ch2Solution() {
+		Integer minCost;
+		while (!constructiveHeuristicTerminate()) {
+			minCost = this.getMinUncoveredSetCost();
+			this.coverSet(this.getBestUncoveredSetForCost(minCost));
+		}
+	}
+
+	/**
+	 * Greedy heuristic implementation using the weight of a subset divided by
+	 * its number of elements as greedy value
+	 */
+	public void ch3Solution() {
+		Double minCost;
+		while (!constructiveHeuristicTerminate()) {
+			minCost = this.getMinUncoveredSetCostElemsRatio();
+			this.coverSet(this.getBestUncoveredSetForCostElemsRatio(minCost));
+		}
+	}
+
+	/**
+	 * Greedy heuristic implementation using the weight of a subset divided by
+	 * the new elements that would be added to the solution as greedy value
+	 */
+	public void ch4Solution() {
+		Double minCost;
+		while (!constructiveHeuristicTerminate()) {
+			minCost = this.getMinUncoveredSetCostAdditionalElemsRatio();
+			this.coverSet(this.getBestUncoveredSetForCostAdditionalElemsRatio(minCost));
+		}
+	}
+
+	/**
+	 * Sets the termination condition for the constructive heuristic algorithm
+	 * 
+	 * @return
+	 */
+	private boolean constructiveHeuristicTerminate() {
+		return this.getUncoveredElements().isEmpty();
 	}
 
 	/**

@@ -39,6 +39,15 @@ public class RandomUtils {
 		return aux;
 	}
 
+	/**
+	 * Returns a random double between 0.0 (inclusive) and 1.0 (exclusive)
+	 * 
+	 * @return
+	 */
+	public Double getRandomDouble() {
+		return random.nextDouble();
+	}
+
 	public Random getRandom() {
 		return random;
 	}
