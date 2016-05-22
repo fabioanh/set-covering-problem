@@ -145,7 +145,8 @@ public class App {
 	private static HeuristicSolverBuilder getDefaultParameters() {
 		HeuristicSolverBuilder builder = new HeuristicSolverBuilder();
 		builder.constructiveHeuristic(ConstructiveHeuristic.CH1).re(false).improvementType(null)
-				.seed(1).stochasticLocalSearch(null).cooling(0.95).temperature(800.0).maxLoops(1000);
+				.seed(1).stochasticLocalSearch(null).cooling(0.95).temperature(800.0)
+				.maxLoops(1000);
 		return builder;
 	}
 }

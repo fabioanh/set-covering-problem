@@ -301,6 +301,10 @@ public final class SetCoveringProblem implements Serializable {
 		this.uncoveredSets = uncoveredSets;
 	}
 
+	public String getInstanceFile() {
+		return instanceFile;
+	}
+
 	/**
 	 * Logic to set an element as covered
 	 * 

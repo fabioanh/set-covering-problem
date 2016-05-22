@@ -14,6 +14,7 @@ public final class HeuristicSolver {
 	private static final Integer NOT_IMPROVEMENT_THRESHOLD = 50;
 	private static final Double LOWER_THRESHOLD_METROPOLIS_ACCEPTANCE = 0.03;
 	// private static final Double HIGHER_THRESHOLD_METROPOLIS_ACCEPTANCE = 0.5;
+
 	/**
 	 * random solution construction
 	 */
@@ -312,6 +313,10 @@ public final class HeuristicSolver {
 		Integer loopCounter = 0;
 		Integer previousCost;
 		Integer currentCost;
+		Long startTime = System.currentTimeMillis();
+		StringBuilder qrtdBuffer = new StringBuilder();
+		String outputFileName = Utils.getQRTDOutputFileName(startTime,
+				setCoveringProblem.getInstanceFile());
 
 		while (!terminateSimulatedAnnealing(notImprovementCounter, currentMetropolisAcceptance,
 				temperature, initTemp)) {
@@ -331,7 +336,10 @@ public final class HeuristicSolver {
 			loopCounter++;
 			LOGGER.trace("Temperature: " + temperature);
 			LOGGER.trace("Metropolis Acceptance: " + currentMetropolisAcceptance);
+			qrtdBuffer.append(Utils.runtimeDistributionTextValue(startTime, loopCounter,
+					coverProblemSA.getCoveredSetsCost()));
 		}
+		Utils.outputQRTD(qrtdBuffer, outputFileName);
 		this.setCoveringProblem = coverProblemSA;
 	}
 
@@ -349,16 +357,16 @@ public final class HeuristicSolver {
 		neighbourProblem.uncoverSet(
 				RandomUtils.getInstance(null).getRandomFromSet(coverProblemSA.getCoveredSets()));
 		switch (RandomUtils.getInstance(null).getRandomInt(3)) {
-		case 0:
+		case 3:
 			neighbourProblem.ch1Solution();
 			break;
-		case 1:
+		case 0:
 			neighbourProblem.ch2Solution();
 			break;
-		case 2:
+		case 1:
 			neighbourProblem.ch3Solution();
 			break;
-		case 3:
+		case 2:
 			neighbourProblem.ch4Solution();
 			break;
 		}

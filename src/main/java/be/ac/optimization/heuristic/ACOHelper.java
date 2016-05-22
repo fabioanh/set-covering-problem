@@ -78,27 +78,31 @@ public class ACOHelper {
 		return heuristicInformation;
 	}
 
+	/**
+	 * Function under control of the general execution of the ACO algorithm
+	 * 
+	 * @return
+	 */
 	public SetCoveringProblem execute() {
-//		Ant currentBestAnt = null;
-		Ant currentBestAnt = ants.get(0);
+		Ant currentBestAnt = null;
+		// Ant currentBestAnt = ants.get(0);
 		Boolean firstLoop = true;
 		Integer loopCounter = 0;
+		Long startTime = System.currentTimeMillis();
+		StringBuilder qrtdBuffer = new StringBuilder();
+		String outputFileName = Utils.getQRTDOutputFileName(startTime, problem.getInstanceFile());
 		while (!terminate(loopCounter)) {
 			currentBestAnt = bestAnt;
 			for (Ant ant : ants) {
 				ant.solve();
+				ant.getProblem().redundancyElimination();
 				if (currentBestAnt == null) {
 					currentBestAnt = ant;
 				}
 				if (bestAnt == null || (bestAnt != null && bestAnt.getCost() > ant.getCost())) {
 					bestAnt = new Ant(ant);
 				}
-				ant.getProblem().redundancyElimination();
 			}
-//			ants.parallelStream().forEach((ant)->{
-//				ant.solve();
-//				
-//			});
 			updatePheromone(currentBestAnt, firstLoop);
 			firstLoop = false;
 			if (loopCounter % 20 == 0) {
@@ -106,7 +110,10 @@ public class ACOHelper {
 				LOGGER.debug("Current best ant's cost: " + bestAnt.getCost());
 			}
 			loopCounter++;
+			qrtdBuffer.append(
+					Utils.runtimeDistributionTextValue(startTime, loopCounter, bestAnt.getCost()));
 		}
+		Utils.outputQRTD(qrtdBuffer, outputFileName);
 		return bestAnt.getProblem();
 	}
 
@@ -114,6 +121,15 @@ public class ACOHelper {
 		return System.currentTimeMillis() > this.maxTime || loop >= maxLoops;
 	}
 
+	/**
+	 * Method Used to update the values of the pheromone used by the ants. This
+	 * is invoked on each iteration done over the whole colony in order to
+	 * evaporate pheromone and update the importance of the values for the best
+	 * solution contained by the best ant.
+	 * 
+	 * @param currentBestAnt
+	 * @param firstLoop
+	 */
 	public void updatePheromone(Ant currentBestAnt, Boolean firstLoop) {
 		evaporatePheromone();
 		Integer totalCostBestAnt = 0;
@@ -130,11 +146,6 @@ public class ACOHelper {
 			minPheromone = epsilon * maxPheromone;
 		}
 
-		// if (maxPheromone == null && minPheromone == null) {
-		// maxPheromone = HUGE_VALUE;
-		// minPheromone = 0.0;
-		// }
-
 		Double pheromoneValue;
 		for (Integer set : bestAnt.getProblem().getCoveredSets()) {
 			pheromoneValue = rho * pheromone.get(set) + delta;
@@ -148,6 +159,10 @@ public class ACOHelper {
 		}
 	}
 
+	/**
+	 * Method in charge of the pheromone evaporation. Uses rho as the main
+	 * parameter to update the pheromone.
+	 */
 	private void evaporatePheromone() {
 		if (minPheromone == null) {
 			minPheromone = 0.0;
